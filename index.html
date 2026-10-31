@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E6B5C">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="앰블런스">
+<title>호남THE선 앰블런스 운행관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 배차 상황판. 상단에 차량 상태 띠, 그 아래 운행 가능 시간 막대, 시간순 운행 카드, 하단 탭. 폰 우선, PC에서는 가운데 560px 기둥 */
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --ink:#13201D; --muted:#5B6B67; --line:#D5DEDB;
+  --accent:#0E6B5C; --accent-ink:#FFFFFF; --accent-soft:#D6EAE5;
+  --s-res:#5B6B67; --s-res-bg:#E6ECEA;
+  --s-conf:#1D4F91; --s-conf-bg:#DCE7F6;
+  --s-run:#B4410C; --s-run-bg:#FBE3D3;
+  --s-back:#8A5A00; --s-back-bg:#F8EBC8; --s-arr:#6B3FA0; --s-arr-bg:#ECE3F7;
+  --s-done:#2D6A2F; --s-done-bg:#DDEFD9;
+  --s-cancel:#8C8C8C; --s-cancel-bg:#EDEDED;
+  --danger:#B42318; --danger-bg:#FDE4E1;
+  --shadow:0 1px 2px rgba(19,32,29,.06),0 4px 14px rgba(19,32,29,.06);
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1513; --surface:#17211E; --ink:#E6EEEB; --muted:#93A39F; --line:#2A3834;
+  --accent:#4FC2AB; --accent-ink:#06201B; --accent-soft:#163A33;
+  --s-res:#A9B6B3; --s-res-bg:#24302D; --s-conf:#8EB6EE; --s-conf-bg:#1A2A40;
+  --s-run:#FF9F6B; --s-run-bg:#3B2216; --s-back:#F0C35A; --s-back-bg:#352A10; --s-arr:#C9A8F0; --s-arr-bg:#2C2140;
+  --s-done:#86CF86; --s-done-bg:#18301A; --s-cancel:#8C8C8C; --s-cancel-bg:#262626;
+  --danger:#FF8A80; --danger-bg:#3A1714; --shadow:0 1px 2px rgba(0,0,0,.3);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1513; --surface:#17211E; --ink:#E6EEEB; --muted:#93A39F; --line:#2A3834;
+  --accent:#4FC2AB; --accent-ink:#06201B; --accent-soft:#163A33;
+  --s-res:#A9B6B3; --s-res-bg:#24302D; --s-conf:#8EB6EE; --s-conf-bg:#1A2A40;
+  --s-run:#FF9F6B; --s-run-bg:#3B2216; --s-back:#F0C35A; --s-back-bg:#352A10; --s-arr:#C9A8F0; --s-arr-bg:#2C2140;
+  --s-done:#86CF86; --s-done-bg:#18301A; --s-cancel:#8C8C8C; --s-cancel-bg:#262626;
+  --danger:#FF8A80; --danger-bg:#3A1714; --shadow:0 1px 2px rgba(0,0,0,.3);
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 110px;display:flex;flex-direction:column;gap:14px}
+
+/* 상단 */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+.brand small{font-size:12px;color:var(--muted);letter-spacing:.02em}
+.brand b{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.me{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;white-space:nowrap}
+.me i{font-style:normal;color:var(--muted);font-weight:500;margin-right:4px}
+
+/* 차량 상태 띠 */
+.vehicle{background:var(--ink);color:var(--bg);border-radius:16px;padding:16px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;position:relative;overflow:hidden}
+.vehicle.run{background:var(--s-run-bg);color:var(--ink);border:1.5px solid var(--s-run)}
+.vehicle.back{background:var(--s-back-bg);color:var(--ink);border:1.5px solid var(--s-back)}
+.v-ico{width:52px;height:52px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.1)}
+.vehicle.arr{background:var(--s-arr-bg);color:var(--ink);border:1.5px solid var(--s-arr)}
+.vehicle.run .v-ico,.vehicle.back .v-ico,.vehicle.arr .v-ico{background:var(--surface)}
+.v-ico svg{width:34px;height:34px}
+.v-main{min-width:0}
+.v-label{font-size:12px;opacity:.75;letter-spacing:.04em}
+.v-state{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+.v-sub{font-size:13px;opacity:.85;margin-top:2px}
+.v-ret{font-family:var(--f-num);font-weight:600}
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:middle;animation:p 1.4s infinite}
+@keyframes p{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+
+/* 날짜 */
+.days{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.days::-webkit-scrollbar{display:none}
+.day{flex:0 0 auto;width:52px;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:6px 0;display:flex;flex-direction:column;align-items:center;gap:1px}
+.day small{font-size:11px;color:var(--muted)}
+.day b{font-family:var(--f-num);font-size:17px}
+.day .dots{height:6px;display:flex;gap:2px}
+.day .dots span{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.day.sun small{color:var(--danger)}
+.day.sel{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.day.sel small{color:inherit;opacity:.85}
+.day.sel .dots span{background:var(--accent-ink)}
+.dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:2px 8px;flex-wrap:wrap}
+.dayhead h2{white-space:nowrap}
+.dayhead h2{margin:0;font-size:17px;font-weight:700}
+.dayhead span{font-size:13px;color:var(--muted)}
+.linkbtn{background:none;border:0;color:var(--accent);font-weight:600;font-size:13px;padding:4px}
+
+/* 시간 막대 */
+.rail{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 12px 8px}
+.rail-h{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px}
+.track{position:relative;height:30px;border-radius:8px;background:repeating-linear-gradient(90deg,var(--bg) 0 calc(10% - 1px),var(--line) calc(10% - 1px) 10%)}
+.blk{position:absolute;top:3px;bottom:3px;border-radius:6px;font-size:11px;font-weight:600;display:flex;align-items:center;padding:0 5px;overflow:hidden;white-space:nowrap;border:0;min-width:6px}
+.blk.buf{background:repeating-linear-gradient(135deg,transparent 0 3px,var(--line) 3px 5px);pointer-events:none;top:8px;bottom:8px}
+.nowline{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--danger);border-radius:2px}
+.ticks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:4px}
+
+/* 운행 카드 */
+.list{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);display:grid;grid-template-columns:62px 1fr;overflow:hidden}
+.card.cancel{opacity:.6}
+.c-time{border-right:1px dashed var(--line);padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center}
+.c-time b{font-family:var(--f-num);font-size:17px;font-weight:600}
+.c-time small{font-family:var(--f-num);font-size:11.5px;color:var(--muted)}
+.c-time .lbl{font-size:10.5px;color:var(--muted);line-height:1.1;margin-bottom:4px}
+.c-body{padding:12px 12px 12px 12px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.c-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.type{font-weight:700;font-size:15.5px}
+.pill{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.02em}
+.st-예약{color:var(--s-res);background:var(--s-res-bg)}
+.st-배차확정{color:var(--s-conf);background:var(--s-conf-bg)}
+.st-출발{color:var(--s-run);background:var(--s-run-bg)}
+.st-도착{color:var(--s-arr);background:var(--s-arr-bg)}
+.st-복귀중{color:var(--s-back);background:var(--s-back-bg)}
+.st-완료{color:var(--s-done);background:var(--s-done-bg)}
+.st-취소{color:var(--s-cancel);background:var(--s-cancel-bg)}
+.tag{font-size:11.5px;padding:1px 7px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+.route{font-size:14px;overflow-wrap:anywhere}
+.route .to{font-weight:600}
+.meta{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.meta .ward{color:var(--ink);font-weight:700}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;font-size:13.5px;font-weight:600;min-height:38px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn small{font-weight:500;opacity:.8;margin-left:4px;font-size:11.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.who{font-size:11.5px;color:var(--muted)}
+
+.empty{border:1.5px dashed var(--line);border-radius:14px;padding:22px 16px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:8px;align-items:center}
+.empty b{color:var(--ink);font-size:15px}
+
+.feed{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.feed h3{margin:0;font-size:13px;color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
+.feed li{list-style:none;font-size:13px;display:flex;gap:8px;align-items:baseline}
+.feed ul{margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.feed .t{font-family:var(--f-num);font-size:11.5px;color:var(--muted);flex:0 0 auto}
+.feed .new{width:6px;height:6px;border-radius:50%;background:var(--danger);flex:0 0 auto;align-self:center}
+
+/* FAB + 하단 탭 */
+.fab{position:fixed;right:max(16px,calc(50% - 264px));bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:0;border-radius:16px;padding:14px 18px;font-weight:700;font-size:15px;box-shadow:0 6px 18px rgba(14,107,92,.35);display:flex;align-items:center;gap:6px;z-index:5}
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px max(16px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));z-index:6}
+.tabs nav{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.tab{background:none;border:0;padding:8px 0;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px}
+.tab svg{width:22px;height:22px}
+.tab[aria-current="true"]{color:var(--accent);background:var(--accent-soft)}
+.badge{background:var(--danger);color:#fff;font-size:10px;border-radius:999px;padding:0 5px;margin-left:2px}
+
+/* 월간 */
+.mhead{display:flex;align-items:center;justify-content:space-between}
+.mhead h2{margin:0;font-size:18px}
+.mnav{display:flex;gap:6px}
+.cal{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .dow{font-size:11px;color:var(--muted);text-align:center;padding:2px 0}
+.cal .dow:first-child{color:var(--danger)}
+.cell{aspect-ratio:1/1.05;max-width:100%;border:0;border-radius:8px;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px 0;gap:2px;font-family:var(--f-num);font-size:13px}
+.cell.blank{background:transparent}
+.cell.today{outline:2px solid var(--accent);outline-offset:-2px}
+.cell .cnt{font-size:11px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:0 6px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat small{display:block;font-size:12px;color:var(--muted)}
+.stat b{font-family:var(--f-num);font-size:22px}
+.bars{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.bar{display:grid;grid-template-columns:64px 1fr 34px;gap:8px;align-items:center;font-size:13px}
+.bar .b{height:10px;border-radius:5px;background:var(--bg);overflow:hidden}
+.bar .b span{display:block;height:100%;background:var(--accent);border-radius:5px}
+.bar .n{font-family:var(--f-num);text-align:right}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:480px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:11.5px;background:var(--bg)}
+
+/* 설정 */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.panel h3{margin:0;font-size:15px}
+.panel p{margin:0;font-size:13px;color:var(--muted)}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.role{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:12px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.role b{font-size:15px}
+.role small{font-size:12px;color:var(--muted)}
+.role[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--muted);min-width:0}
+input,select,textarea{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 11px;font-size:15px;color:var(--ink);width:100%;min-width:0}
+textarea{resize:vertical;min-height:60px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* 시트 */
+.scrim{position:fixed;inset:0;background:rgba(10,16,14,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:560px;max-height:92%;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px}
+.sheet h2{margin:0;font-size:18px;display:flex;justify-content:space-between;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:7px 12px;font-size:13.5px;font-weight:600}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.warn{border-radius:10px;padding:10px 12px;font-size:13px;background:var(--danger-bg);color:var(--danger);font-weight:600}
+.ok{border-radius:10px;padding:10px 12px;font-size:13px;background:var(--s-done-bg);color:var(--s-done);font-weight:600}
+.note{font-size:12px;color:var(--muted)}
+.sheet-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.confirmbox{border:1.5px solid var(--danger);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:13.5px;font-weight:600;z-index:30;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
+.banner{border-radius:12px;padding:10px 12px;font-size:12.5px;background:var(--s-back-bg);color:var(--s-back);font-weight:600}
+</style>
+
+</head><body>
+<div class="wrap" id="app"></div>
+<div class="tabs"><nav id="tabs"></nav></div>
+<button class="fab" id="fab" type="button" aria-label="운행 예약 등록">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>예약 등록</button>
+<div id="sheetRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+(() => {
+const TYPES = ["입원 이송","외진","전원","퇴원 이송","기타"];
+const NEEDS = ["스트레처","휠체어","산소","석션","보호자 동승","격리 환자"];
+const FLOW = ["예약","배차확정","출발","도착","복귀중","완료"];
+const NEXT = {
+  "예약":    {to:"배차확정", label:"배차 확정", role:"원무부장"},
+  "배차확정": {to:"출발",    label:"출발",     role:"응급구조사"},
+  "출발":    {to:"도착",    label:"목적지 도착", role:"응급구조사"},
+  "도착":    {to:"복귀중",   label:"복귀 출발", role:"응급구조사"},
+  "복귀중":  {to:"완료",    label:"병원 도착 · 완료", role:"응급구조사"}
+};
+const ROLES = [
+  {id:"상담실", desc:"예약 등록·변경"},
+  {id:"원무부장", desc:"배차 확정·전체 관리"},
+  {id:"응급구조사 1", desc:"출발·복귀 처리"},
+  {id:"응급구조사 2", desc:"출발·복귀 처리"}
+];
+
+const ls = {
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+
+const pad = n => String(n).padStart(2,"0");
+const ymd = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const parseYmd = s => {const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
+const toMin = t => {if(!t)return null;const [h,m]=t.split(":").map(Number);return h*60+m};
+const fromMin = m => pad(Math.floor(m/60)%24)+":"+pad(m%60);
+const nowMin = () => {const d=new Date();return d.getHours()*60+d.getMinutes()};
+const DOW = ["일","월","화","수","목","금","토"];
+const wardList = () => String(S.cfg.wards||"").split(",").map(x=>x.trim()).filter(Boolean);
+const fmtDay = s => {const d=parseYmd(s);return (d.getMonth()+1)+"월 "+d.getDate()+"일 ("+DOW[d.getDay()]+")"};
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hhmm = iso => {if(!iso)return "";const d=new Date(iso);return pad(d.getHours())+":"+pad(d.getMinutes())};
+
+const S = {
+  role: ls.get("amb.role", null),
+  tab: "today",
+  day: ymd(new Date()),
+  month: ymd(new Date()).slice(0,7),
+  trips: [],
+  monthExtra: null,
+  cfg: {crew1:"응급구조사 1", crew2:"응급구조사 2", open:"09:00", close:"17:00", buffer:15, wards:"1병동,2병동,3병동,4병동,5병동,6병동,7병동,8병동"},
+  seen: ls.get("amb.seen", 0),
+  mode: "loading", // loading | live | local | readonly
+  stale: false,
+  db: null, canWrite: true,
+  sheet: null, confirmId: null
+};
+
+/* ---------- 데이터 ---------- */
+function demoTrips(){
+  const t = ymd(new Date());
+  return [
+    {id:"d1",date:t,start:"09:30",arrive:"10:10",type:"입원 이송",from:"전남대병원",to:"본원",patient:"김○○ (예시)",ward:"3병동",needs:["스트레처"],status:"완료",memo:"",createdBy:"상담실",updatedBy:"응급구조사 1",updatedAt:new Date().toISOString(),hist:[]},
+    {id:"d2",date:t,start:"13:00",arrive:"13:30",type:"외진",from:"본원",to:"조선대병원 신장내과",patient:"이○○ (예시)",ward:"5병동",needs:["휠체어","보호자 동승"],status:"배차확정",memo:"외래 13:30 예약",createdBy:"상담실",updatedBy:"원무부장",updatedAt:new Date().toISOString(),hist:[]},
+    {id:"d3",date:t,start:"15:30",arrive:"16:05",type:"전원",from:"본원",to:"광주기독병원 응급실",patient:"박○○ (예시)",ward:"8병동",needs:["스트레처","산소"],status:"예약",memo:"",createdBy:"상담실",updatedBy:"상담실",updatedAt:new Date().toISOString(),hist:[]}
+  ];
+}
+
+/* ▼▼▼ 구글 웹앱 주소를 따옴표 안에 붙여넣으세요 (…/exec 로 끝나는 주소) ▼▼▼ */
+const API_URL_FIXED = "";
+/* ▲▲▲ ------------------------------------------------------------ ▲▲▲ */
+const API_URL = API_URL_FIXED || ls.get("amb.api","");
+const HAS_GS = !!API_URL;
+async function call(fn, ...args){
+  const r = await fetch(API_URL, {method:"POST", body:JSON.stringify({fn, args}), redirect:"follow"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j = await r.json();
+  if(j.error) throw new Error(j.error);
+  return j.data;
+}
+let lastSig = {}, firstLoad = true, pollT = null, failCount = 0;
+function applyData(data){
+  if(!data) return;
+  if(!firstLoad){
+    for(const t of data.trips){
+      const prev = lastSig[t.id];
+      if(prev!==t.updatedAt && t.updatedBy && t.updatedBy!==S.role){
+        toast(`${t.updatedBy}: ${t.start} ${t.type} → ${t.status}`);
+      }
+    }
+  }
+  firstLoad=false;
+  lastSig={}; for(const t of data.trips) lastSig[t.id]=t.updatedAt;
+  S.trips=data.trips;
+  if(data.cfg) S.cfg={...S.cfg,...data.cfg};
+  S.mode="live"; S.stale=false; failCount=0;
+  if(!S.sheet) render(); else { renderTabs(); }
+}
+async function refresh(){
+  try{ applyData(await call("getAll")); }
+  catch(e){ failCount++; if(failCount>=2){S.stale=true; if(!S.sheet) render();} }
+}
+async function boot(){
+  render();
+  if(!HAS_GS){ S.mode="local"; S.trips=demoTrips(); render(); return; }
+  await refresh();
+  pollT=setInterval(()=>{ if(document.visibilityState==="visible") refresh(); }, 15000);
+  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") refresh(); });
+}
+
+async function saveTrip(t){
+  const by = S.role||"미지정";
+  const entry = {t:new Date().toISOString(), by, msg:t._msg||"수정"};
+  delete t._msg;
+  t.hist = [...(t.hist||[]), entry].slice(-20);
+  t.updatedBy = by; t.updatedAt = entry.t;
+  // 화면 먼저 반영
+  const i=S.trips.findIndex(x=>x.id===t.id);
+  if(i>=0)S.trips[i]=t; else S.trips.push(t);
+  lastSig[t.id]=t.updatedAt;
+  render();
+  if(S.mode==="local") return true;
+  try{ applyData(await call("saveTrip", JSON.stringify(t))); return true; }
+  catch(e){ toast("저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요."); refresh(); return false; }
+}
+async function removeTrip(id){
+  S.trips=S.trips.filter(t=>t.id!==id); render();
+  if(S.mode==="local") return;
+  try{ applyData(await call("deleteTrip", id)); }catch(e){ toast("삭제하지 못했어요."); refresh(); }
+}
+async function saveCfg(patch){
+  S.cfg={...S.cfg,...patch}; render();
+  if(S.mode==="local") return;
+  try{ applyData(await call("saveCfg", JSON.stringify(S.cfg))); toast("설정을 저장했어요"); }
+  catch(e){ toast("설정을 저장하지 못했어요."); }
+}
+
+/* ---------- 계산 ---------- */
+const dayTrips = d => S.trips.filter(t=>t.date===d).sort((a,b)=>toMin(a.start)-toMin(b.start));
+const active = t => t.status!=="취소";
+const backMin = t => 2*toMin(t.arrive)-toMin(t.start); // 귀로도 편도와 같은 시간으로 추정
+function conflicts(c){
+  const s=toMin(c.start), e=backMin(c), buf=Number(S.cfg.buffer)||0;
+  if(s==null||e==null)return [];
+  return S.trips.filter(t=>t.id!==c.id&&t.date===c.date&&active(t))
+    .filter(t=>{const ts=toMin(t.start),te=backMin(t)+buf;return s< te && (e+buf) > ts;});
+}
+function vehicleState(){
+  const today=ymd(new Date());
+  const ts=dayTrips(today).filter(active);
+  const on=ts.find(t=>t.status==="출발"||t.status==="도착"||t.status==="복귀중");
+  if(on) return {kind:on.status==="출발"?"run":on.status==="도착"?"arr":"back",trip:on};
+  const nm=nowMin();
+  const next=ts.find(t=>(t.status==="예약"||t.status==="배차확정")&&backMin(t)>=nm);
+  return {kind:"idle",next};
+}
+function crewLabel(){return esc(S.cfg.crew1)+" · "+esc(S.cfg.crew2);}
+
+/* ---------- 렌더 ---------- */
+const icoAmb = `<svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect x="3" y="12" width="22" height="16" rx="2" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="2"/><path d="M25 16h6.5l4.5 6v6H25z" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 16v8M10 20h8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="10" cy="29.5" r="3" fill="var(--surface)" stroke="currentColor" stroke-width="2"/><circle cx="30" cy="29.5" r="3" fill="var(--surface)" stroke="currentColor" stroke-width="2"/><rect x="11" y="8" width="6" height="4" rx="1" fill="currentColor"/></svg>`;
+
+function render(){
+  const app=document.getElementById("app");
+  if(!S.role){ app.innerHTML=roleScreen(true); document.getElementById("fab").hidden=true; renderTabs(); bind(); return; }
+  document.getElementById("fab").hidden = S.tab==="settings" || S.mode==="readonly";
+  let h=`<header class="top"><div class="brand"><small>호남THE선요양병원</small><b>앰블런스 운행관리</b></div>
+    <button class="me" data-act="tab" data-v="settings"><i>나</i>${esc(S.role)}</button></header>`;
+  if(S.mode==="local") h+=`<div class="banner">아직 구글 시트와 연결되지 않은 미리보기예요. 예시 일정이며 공유되지 않아요. 설정 탭에서 연결할 수 있어요.</div>`;
+  if(S.mode==="readonly") h+=`<div class="banner">보기 전용으로 열렸어요. 예약·상태 변경은 편집 권한이 있는 계정에서 할 수 있어요.</div>`;
+  if(S.stale) h+=`<div class="banner">서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요. 화면의 일정이 최신이 아닐 수 있어요.</div>`;
+  if(S.tab==="today") h+=todayView();
+  else if(S.tab==="month") h+=monthView();
+  else h+=settingsView();
+  app.innerHTML=h;
+  renderTabs(); renderSheet(); bind();
+}
+
+function vehicleBanner(){
+  const v=vehicleState();
+  if(v.kind==="idle"){
+    const sub = v.next ? `다음 운행 <span class="v-ret">${esc(v.next.start)}</span> · ${esc(v.next.type)} → ${esc(v.next.to)}` : "오늘 남은 운행이 없어요";
+    return `<section class="vehicle" aria-live="polite"><div class="v-ico">${icoAmb}</div><div class="v-main"><div class="v-label">차량 1대 · 현재 상태</div><div class="v-state">병원 대기 중</div><div class="v-sub">${sub}</div></div></section>`;
+  }
+  const t=v.trip; const col=v.kind;
+  const late = v.kind==="run" && toMin(t.arrive)<nowMin();
+  const label = v.kind==="run"?`목적지로 이동 중 · ${hhmm(t.departAt)||esc(t.start)} 출발`:v.kind==="arr"?`목적지 도착 · ${hhmm(t.arriveAt)||esc(t.arrive)}`:`병원으로 복귀 중 · ${hhmm(t.leaveAt)||""} 출발`;
+  const state = v.kind==="run"?`도착 예정 <span class="v-ret">${esc(t.arrive)}</span>${late?` <span class="pill st-출발">지연</span>`:""}`:v.kind==="arr"?"현장 대기 중":"복귀 중";
+  return `<section class="vehicle ${col}" aria-live="polite"><div class="v-ico" style="color:var(--s-${col})">${icoAmb}</div><div class="v-main">
+    <div class="v-label"><span class="pulse" style="color:var(--s-${col})"></span>${label}</div>
+    <div class="v-state">${state}</div>
+    <div class="v-sub">${esc(t.type)} · ${esc(t.to)}</div></div></section>`;
+}
+
+function dayStrip(){
+  const base=parseYmd(ymd(new Date())); let h=`<div class="days" role="tablist" aria-label="날짜 선택">`;
+  for(let i=-2;i<12;i++){
+    const d=new Date(base);d.setDate(d.getDate()+i);const k=ymd(d);
+    const n=S.trips.filter(t=>t.date===k&&active(t)).length;
+    h+=`<button class="day ${k===S.day?"sel":""} ${d.getDay()===0?"sun":""}" data-act="day" data-v="${k}" aria-selected="${k===S.day}"><small>${i===0?"오늘":DOW[d.getDay()]}</small><b>${d.getDate()}</b><span class="dots">${"<span></span>".repeat(Math.min(n,4))}</span></button>`;
+  }
+  return h+`</div>`;
+}
+
+function railView(list){
+  const o=toMin(S.cfg.open)||540, c=toMin(S.cfg.close)||1020;
+  const lo=Math.min(o-60, ...list.map(t=>toMin(t.start))), hi=Math.max(c+60, ...list.map(t=>backMin(t)+ (Number(S.cfg.buffer)||0)));
+  const span=hi-lo, pct=m=>((m-lo)/span*100).toFixed(2);
+  let b="";
+  for(const t of list.filter(active)){
+    const s=toMin(t.start),e=backMin(t),buf=Number(S.cfg.buffer)||0;
+    b+=`<button class="blk st-${t.status}" style="left:${pct(s)}%;width:${(pct(e)-pct(s)).toFixed(2)}%" data-act="edit" data-v="${t.id}" aria-label="${esc(t.start)} ${esc(t.type)}">${esc(t.start)}</button>`;
+    if(buf) b+=`<span class="blk buf" style="left:${pct(e)}%;width:${(buf/span*100).toFixed(2)}%"></span>`;
+  }
+  if(S.day===ymd(new Date())){const n=nowMin(); if(n>lo&&n<hi) b+=`<span class="nowline" style="left:${pct(n)}%" title="지금"></span>`;}
+  const ticks=[]; for(let m=Math.ceil(lo/120)*120;m<=hi;m+=120) ticks.push(`<span>${Math.floor(m/60)}시</span>`);
+  const used=list.filter(active).reduce((a,t)=>a+(backMin(t)-toMin(t.start)),0);
+  return `<section class="rail"><div class="rail-h"><span>차량 사용 시간대 (왕복 추정)</span><span class="num">${Math.floor(used/60)}시간 ${used%60}분 · 정리 ${S.cfg.buffer}분</span></div>
+    <div class="track">${b}</div><div class="ticks">${ticks.join("")}</div></section>`;
+}
+
+function card(t){
+  const nx=NEXT[t.status];
+  const mine = nx && (S.role===nx.role || S.role.startsWith(nx.role));
+  const isCrew = S.role.startsWith("응급구조사");
+  let act="";
+  if(S.mode!=="readonly" && nx){
+    act+=`<button class="btn ${mine?"primary":""}" data-act="advance" data-v="${t.id}">${nx.label}${mine?"":`<small>${nx.role}</small>`}</button>`;
+  }
+  if(S.mode!=="readonly" && t.status==="출발"){
+    act+=`<button class="btn ghost" data-act="delay" data-v="${t.id}" data-m="15">도착 +15분</button>`;
+  }
+  if(S.mode!=="readonly" && t.status!=="완료" && t.status!=="취소") act+=`<button class="btn ghost" data-act="edit" data-v="${t.id}">변경</button>`;
+  if(S.mode!=="readonly" && t.status==="취소") act+=`<button class="btn ghost" data-act="restore" data-v="${t.id}">예약으로 되돌리기</button>`;
+  const actual = [t.departAt?`실제 출발 ${hhmm(t.departAt)}`:"", t.arriveAt?`도착 ${hhmm(t.arriveAt)}`:"", t.returnAt?`복귀 ${hhmm(t.returnAt)}`:""].filter(Boolean).join(" · ");
+  const last = t.hist&&t.hist.length ? t.hist[t.hist.length-1] : null;
+  return `<article class="card ${t.status==="취소"?"cancel":""}">
+    <div class="c-time"><b>${esc(t.start)}</b><span class="lbl">출발</span><small>${esc(t.arrive)}</small><span class="lbl">도착</span></div>
+    <div class="c-body">
+      <div class="c-row"><span class="type">${esc(t.type)}</span><span class="pill st-${t.status}">${t.status==="복귀중"?"복귀 중":t.status==="배차확정"?"배차 확정":t.status}</span></div>
+      <div class="route">${esc(t.from)} <span aria-hidden="true">→</span> <span class="to">${esc(t.to)}</span></div>
+      ${(t.ward||t.patient)?`<div class="meta">${t.ward?`<b class="ward">${esc(t.ward)}</b>`:""}${t.ward&&t.patient?" · ":""}${t.patient?`환자 ${esc(t.patient)}`:""}</div>`:""}
+      ${(t.needs&&t.needs.length)?`<div class="c-row">${t.needs.map(n=>`<span class="tag">${esc(n)}</span>`).join("")}</div>`:""}
+      ${t.memo?`<div class="meta">메모 · ${esc(t.memo)}</div>`:""}
+      ${actual?`<div class="meta num">${actual}</div>`:""}
+      ${act?`<div class="actions">${act}</div>`:""}
+      ${last?`<div class="who">${esc(last.by)} · ${hhmm(last.t)} ${esc(last.msg)}</div>`:""}
+    </div></article>`;
+}
+
+function feedView(){
+  const items=[];
+  for(const t of S.trips) for(const h of (t.hist||[])) items.push({...h,trip:t});
+  items.sort((a,b)=>b.t.localeCompare(a.t));
+  const top=items.slice(0,5);
+  if(!top.length) return "";
+  const newCount=items.filter(i=>new Date(i.t).getTime()>S.seen && i.by!==S.role).length;
+  return `<section class="feed"><h3><span>최근 변경${newCount?` <span class="badge">${newCount}</span>`:""}</span>${newCount?`<button class="linkbtn" data-act="seen">모두 확인</button>`:""}</h3><ul>${
+    top.map(i=>`<li>${new Date(i.t).getTime()>S.seen&&i.by!==S.role?`<span class="new" aria-label="새 변경"></span>`:""}<span class="t">${i.t.slice(5,10).replace("-","/")} ${hhmm(i.t)}</span><span><b>${esc(i.by)}</b> · ${esc(i.trip.start)} ${esc(i.trip.type)} ${esc(i.msg)}</span></li>`).join("")
+  }</ul></section>`;
+}
+
+function todayView(){
+  const list=dayTrips(S.day);
+  const isToday=S.day===ymd(new Date());
+  let h=vehicleBanner()+dayStrip();
+  h+=`<div class="dayhead"><h2>${isToday?"오늘 · ":""}${fmtDay(S.day)}</h2><span>${list.filter(active).length}건 · 구조사 ${crewLabel()} 동행</span></div>`;
+  h+=railView(list);
+  if(S.mode==="loading") h+=`<div class="empty"><b>운행 일정을 불러오는 중이에요</b></div>`;
+  else if(!list.length) h+=`<div class="empty"><b>이 날은 등록된 운행이 없어요</b><span>입원 이송, 외진, 전원 일정을 등록하면 네 명 모두의 화면에 바로 보여요.</span>${S.mode!=="readonly"?`<button class="btn primary" data-act="new">첫 운행 예약하기</button>`:""}</div>`;
+  else h+=`<div class="list">${list.map(card).join("")}</div>`;
+  h+=feedView();
+  return h;
+}
+
+function monthView(){
+  const [y,m]=S.month.split("-").map(Number);
+  const first=new Date(y,m-1,1), days=new Date(y,m,0).getDate();
+  const src=(S.monthExtra&&S.monthExtra.month===S.month)?S.monthExtra.trips:S.trips;
+  const mt=src.filter(t=>t.date&&t.date.startsWith(S.month)&&active(t)).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+  let cal=`<div class="cal">${DOW.map(d=>`<div class="dow">${d}</div>`).join("")}`;
+  for(let i=0;i<first.getDay();i++) cal+=`<div class="cell blank"></div>`;
+  const today=ymd(new Date());
+  for(let d=1;d<=days;d++){
+    const k=`${S.month}-${pad(d)}`, n=mt.filter(t=>t.date===k).length;
+    cal+=`<button class="cell ${k===today?"today":""}" data-act="goday" data-v="${k}" aria-label="${d}일 ${n}건">${d}${n?`<span class="cnt">${n}</span>`:""}</button>`;
+  }
+  cal+=`</div>`;
+  const done=mt.filter(t=>t.status==="완료");
+  const mins=mt.reduce((a,t)=>a+(backMin(t)-toMin(t.start)),0);
+  const byType=TYPES.map(tp=>({tp,n:mt.filter(t=>t.type===tp).length}));
+  const max=Math.max(1,...byType.map(b=>b.n));
+  const rows=mt.map(t=>`<tr><td class="num">${t.date.slice(5).replace("-","/")}</td><td class="num">${esc(t.start)}–${esc(t.arrive)}</td><td>${esc(t.type)}</td><td>${esc(t.ward||"")}</td><td>${esc(t.to)}</td><td><span class="pill st-${t.status}">${t.status}</span></td></tr>`).join("");
+  return `<div class="mhead"><h2>${y}년 ${m}월 운행 기록</h2><div class="mnav"><button class="btn" data-act="mon" data-v="-1" aria-label="이전 달">‹</button><button class="btn" data-act="mon" data-v="1" aria-label="다음 달">›</button></div></div>
+    <div class="stats"><div class="stat"><small>총 운행</small><b>${mt.length}</b></div><div class="stat"><small>완료</small><b>${done.length}</b></div><div class="stat"><small>예상 운행시간</small><b>${(mins/60).toFixed(1)}<span style="font-size:13px">h</span></b></div></div>
+    ${cal}
+    <section class="bars"><h3 style="margin:0;font-size:13px;color:var(--muted)">유형별 건수</h3>${byType.map(b=>`<div class="bar"><span>${b.tp}</span><span class="b"><span style="width:${b.n/max*100}%"></span></span><span class="n">${b.n}</span></div>`).join("")}</section>
+    ${mt.length?`<div class="tablewrap"><table><thead><tr><th>날짜</th><th>출발–도착</th><th>유형</th><th>병동</th><th>목적지</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="empty"><b>이 달의 운행 기록이 없어요</b></div>`}`;
+}
+
+function roleScreen(first){
+  return `${first?`<header class="top"><div class="brand"><small>호남THE선요양병원</small><b>앰블런스 운행관리</b></div></header>
+    <section class="vehicle"><div class="v-ico">${icoAmb}</div><div class="v-main"><div class="v-label">처음 오셨네요</div><div class="v-state">누가 사용하시나요?</div><div class="v-sub">선택한 역할은 이 휴대폰에만 기억돼요.</div></div></section>`:""}
+    <section class="panel"><h3>내 역할</h3><p>변경 기록과 알림에 이 이름이 표시돼요.</p><div class="roles">${
+    ROLES.map(r=>`<button class="role" data-act="role" data-v="${r.id}" aria-pressed="${S.role===r.id}"><b>${r.id==="응급구조사 1"?esc(S.cfg.crew1):r.id==="응급구조사 2"?esc(S.cfg.crew2):r.id}</b><small>${r.desc}</small></button>`).join("")}</div></section>`;
+}
+
+function settingsView(){
+  const ro=S.mode==="readonly";
+  return roleScreen(false)+`
+  <section class="panel"><h3>운행 기준 <span class="note">(4명 공통)</span></h3>
+    <div class="grid2">
+      <label class="f">응급구조사 1 이름<input id="cfg-crew1" value="${esc(S.cfg.crew1)}" ${ro?"disabled":""}></label>
+      <label class="f">응급구조사 2 이름<input id="cfg-crew2" value="${esc(S.cfg.crew2)}" ${ro?"disabled":""}></label>
+      <label class="f">운행 시작<input id="cfg-open" type="time" value="${esc(S.cfg.open)}" ${ro?"disabled":""}></label>
+      <label class="f">운행 종료<input id="cfg-close" type="time" value="${esc(S.cfg.close)}" ${ro?"disabled":""}></label>
+      <label class="f">운행 후 정리 시간(분)<select id="cfg-buffer" ${ro?"disabled":""}>${[0,10,15,20,30].map(n=>`<option ${Number(S.cfg.buffer)===n?"selected":""}>${n}</option>`).join("")}</select></label>
+      <label class="f" style="grid-column:1/-1">병동 목록 (쉼표로 구분)<input id="cfg-wards" value="${esc(S.cfg.wards||"")}" placeholder="예: 1병동, 2병동, 3병동" ${ro?"disabled":""}></label>
+    </div>
+    <p>정리 시간은 차량 소독·장비 정리 시간이에요. 앞 운행 복귀 후 이 시간 안에 다음 출발이 잡히면 중복으로 경고해요.</p>
+    ${ro?"":`<div class="sheet-actions"><button class="btn primary" data-act="savecfg">기준 저장</button></div>`}
+  </section>
+  <section class="panel" id="installPanel"><h3>휴대폰에 앱 설치</h3>
+    ${standalone()?`<p>앱으로 실행 중이에요.</p>`:(deferredPrompt?`<p>버튼을 누르면 앱 서랍에 아이콘이 생기고 주소창 없이 열려요.</p><div class="sheet-actions"><button class="btn primary" data-act="install">앱 설치</button></div>`:`<p>크롬 오른쪽 위 <b>⋮ → 앱 설치</b>(또는 <b>홈 화면에 추가</b>)를 눌러 주세요. 삼성 인터넷은 <b>≡ → 현재 페이지 추가 → 홈 화면</b>이에요.</p>`)}
+  </section>
+  ${API_URL_FIXED?"":`<section class="panel"><h3>구글 시트 연결</h3>
+    <p>${HAS_GS?"이 휴대폰은 연결돼 있어요.":"구글 웹앱 주소(…/exec)를 붙여넣으면 이 휴대폰에서 실제 일정이 보여요."} 4명 모두 자동 연결되게 하려면 index.html의 주소 칸에 넣어 주세요.</p>
+    <label class="f">웹앱 주소<input id="cfg-api" value="${esc(API_URL)}" placeholder="https://script.google.com/macros/s/.../exec" inputmode="url"></label>
+    <div class="sheet-actions"><button class="btn primary" data-act="saveapi">연결</button></div></section>`}
+  <section class="panel"><h3>사용 안내</h3>
+        <p>개인정보 보호를 위해 환자는 <b>성(박○○)</b>처럼 최소한으로 적어 주세요. 주민번호·연락처는 넣지 마세요.</p>
+    <p>운행 흐름: 예약(상담실) → 배차 확정(원무부장) → 출발 → 도착 → 복귀 중 → 완료(응급구조사)</p>
+  </section>`;
+}
+
+function renderTabs(){
+  const items=[["today","운행",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`],
+    ["month","월간 기록",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>`],
+    ["settings","설정",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`]];
+  document.getElementById("tabs").innerHTML=S.role?items.map(([k,l,i])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${S.tab===k}">${i}${l}</button>`).join(""):"";
+}
+
+/* ---------- 예약 시트 ---------- */
+function blankTrip(){
+  const base = S.day===ymd(new Date()) ? Math.max(toMin(S.cfg.open)||540, Math.ceil((nowMin()+30)/30)*30) : (toMin(S.cfg.open)||540);
+  return {id:"t"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:S.day,start:fromMin(base),arrive:fromMin(base+30),type:"입원 이송",from:"",to:"본원",ward:"",patient:"",needs:[],status:"예약",memo:"",createdBy:S.role,hist:[]};
+}
+function renderSheet(){
+  const root=document.getElementById("sheetRoot");
+  if(!S.sheet){root.innerHTML="";return;}
+  const t=S.sheet, isNew=!S.trips.some(x=>x.id===t.id);
+  const cf=conflicts(t);
+  const bad = !t.arrive || toMin(t.arrive)<=toMin(t.start);
+  const outside = toMin(t.start)<toMin(S.cfg.open) || backMin(t)>toMin(S.cfg.close);
+  let chk="";
+  if(bad) chk=`<div class="warn">도착 시간이 출발 시간보다 늦어야 해요.</div>`;
+  else if(cf.length) chk=`<div class="warn">차량이 겹쳐요: ${cf.map(c=>`${c.start}–${c.arrive} ${esc(c.type)}`).join(", ")} (귀로는 편도와 같은 시간으로 추정, 정리 ${S.cfg.buffer}분 포함). 시간을 바꾸거나 그대로 저장할 수 있어요.</div>`;
+  else chk=`<div class="ok">이 시간에는 차량을 쓸 수 있어요.${outside?" 단, 기본 운행 시간 밖이에요.":""}</div>`;
+  const confirm = S.confirmId===t.id ? `<div class="confirmbox"><b>이 운행을 취소할까요?</b><span>취소한 운행은 기록에 남고, 다시 예약으로 되돌릴 수 있어요.</span><div class="sheet-actions"><button class="btn" data-act="cancelno">아니요</button><button class="btn danger" data-act="cancelyes">운행 취소</button></div></div>`:"";
+  root.innerHTML=`<div class="scrim" data-act="close"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t">
+    <h2 id="sh-t">${isNew?"운행 예약 등록":"운행 변경"}<button class="btn ghost" data-act="close" aria-label="닫기">닫기</button></h2>
+    <div class="chips" role="group" aria-label="운행 유형">${TYPES.map(x=>`<button class="chip" data-act="ftype" data-v="${x}" aria-pressed="${t.type===x}">${x}</button>`).join("")}</div>
+    <div class="grid2">
+      <label class="f" style="grid-column:1/-1">날짜<input id="f-date" type="date" value="${t.date}"></label>
+      <label class="f">출발<input id="f-start" type="time" value="${t.start}" step="300"></label>
+      <label class="f">도착<input id="f-arrive" type="time" value="${t.arrive}" step="300"></label>
+    </div>
+    <div class="chips" aria-label="편도 이동 시간 빠른 선택">${[20,30,40,60,90].map(n=>`<button class="chip" data-act="dur" data-v="${n}" aria-pressed="${toMin(t.arrive)-toMin(t.start)===n}">편도 ${n<60?n+"분":n===60?"1시간":"1시간 30분"}</button>`).join("")}</div>
+    ${chk}
+    <div class="grid2">
+      <label class="f">출발지<input id="f-from" value="${esc(t.from)}" placeholder="예: 전남대병원"></label>
+      <label class="f">도착지<input id="f-to" value="${esc(t.to)}" placeholder="예: 본원"></label>
+    </div>
+    <div class="f" style="font-size:12.5px;font-weight:600;color:var(--muted)">병동</div>
+    <div class="chips" role="group" aria-label="병동">${wardList().map(x=>`<button class="chip" data-act="fward" data-v="${esc(x)}" aria-pressed="${t.ward===x}">${esc(x)}</button>`).join("")}</div>
+    <div class="grid2">
+      <label class="f">병동 (직접 입력)<input id="f-ward" value="${esc(t.ward||"")}" placeholder="예: 8병동"></label>
+      <label class="f">환자 (최소 정보)<input id="f-patient" value="${esc(t.patient)}" placeholder="예: 박○○"></label>
+    </div>
+    <div class="f" style="font-size:12.5px;font-weight:600;color:var(--muted)">필요 장비·조건</div>
+    <div class="chips">${NEEDS.map(x=>`<button class="chip" data-act="fneed" data-v="${x}" aria-pressed="${t.needs.includes(x)}">${x}</button>`).join("")}</div>
+    <label class="f">메모<textarea id="f-memo" placeholder="외래 예약 시간, 보호자 연락 여부 등">${esc(t.memo)}</textarea></label>
+    <p class="note">응급구조사 ${crewLabel()} 2명이 함께 출동하는 것으로 기록돼요.</p>
+    ${confirm}
+    <div class="sheet-actions">
+      ${!isNew&&t.status!=="취소"&&!S.confirmId?`<button class="btn danger" data-act="cancelask">운행 취소</button>`:""}
+      ${!isNew&&t.status==="예약"?`<button class="btn ghost" data-act="del">삭제</button>`:""}
+      <button class="btn primary" data-act="save" ${bad?"disabled":""}>${isNew?"예약 등록":"변경 저장"}</button>
+    </div>
+  </div></div>`;
+}
+function readSheet(){
+  const t=S.sheet; if(!t)return;
+  const g=id=>document.getElementById(id);
+  if(g("f-date")){t.date=g("f-date").value||t.date;t.start=g("f-start").value||t.start;t.arrive=g("f-arrive").value||t.arrive;
+    t.from=g("f-from").value.trim();t.to=g("f-to").value.trim();t.ward=g("f-ward").value.trim();t.patient=g("f-patient").value.trim();t.memo=g("f-memo").value.trim();}
+}
+
+/* ---------- 이벤트 ---------- */
+function bind(){}
+document.addEventListener("click", async e=>{
+  const el=e.target.closest("[data-act]"); if(!el)return;
+  const a=el.dataset.act, v=el.dataset.v;
+  if(a==="close" && el.classList.contains("scrim") && e.target!==el) return;
+  switch(a){
+    case "role": S.role=v; ls.set("amb.role",v); if(S.tab==="settings"&&document.querySelector(".me")) toast(`${v}(으)로 설정했어요`); render(); break;
+    case "tab": S.tab=v; S.sheet=null; render(); window.scrollTo(0,0); break;
+    case "day": S.day=v; render(); break;
+    case "goday": S.day=v; S.tab="today"; render(); window.scrollTo(0,0); break;
+    case "mon": { const [y,m]=S.month.split("-").map(Number); const d=new Date(y,m-1+Number(v),1); S.month=ymd(d).slice(0,7); render(); loadMonth(); break; }
+    case "seen": S.seen=Date.now(); ls.set("amb.seen",S.seen); render(); break;
+    case "new": S.sheet=blankTrip(); S.confirmId=null; renderSheet(); break;
+    case "edit": { const t=S.trips.find(x=>x.id===v); if(!t||S.mode==="readonly")return; S.sheet=JSON.parse(JSON.stringify({needs:[],hist:[],...t})); S.confirmId=null; renderSheet(); break; }
+    case "close": S.sheet=null; S.confirmId=null; renderSheet(); break;
+    case "ftype": readSheet(); S.sheet.type=v; if(v==="입원 이송"&&!S.sheet.to)S.sheet.to="본원"; if((v==="외진"||v==="전원"||v==="퇴원 이송")&&S.sheet.to==="본원"){S.sheet.to="";S.sheet.from=S.sheet.from||"본원";} renderSheet(); break;
+    case "fward": readSheet(); S.sheet.ward = S.sheet.ward===v ? "" : v; renderSheet(); break;
+    case "fneed": readSheet(); { const n=S.sheet.needs; const i=n.indexOf(v); i>=0?n.splice(i,1):n.push(v);} renderSheet(); break;
+    case "dur": readSheet(); S.sheet.arrive=fromMin(toMin(S.sheet.start)+Number(v)); renderSheet(); break;
+    case "cancelask": readSheet(); S.confirmId=S.sheet.id; renderSheet(); break;
+    case "cancelno": S.confirmId=null; renderSheet(); break;
+    case "cancelyes": { readSheet(); const t=S.sheet; t.status="취소"; t._msg="운행 취소"; S.sheet=null; S.confirmId=null; renderSheet(); if(await saveTrip(t)) toast("운행을 취소했어요"); break; }
+    case "del": { const id=S.sheet.id; S.sheet=null; renderSheet(); await removeTrip(id); toast("예약을 삭제했어요"); break; }
+    case "save": {
+      readSheet(); const t=S.sheet;
+      if(!t.to){toast("도착지를 적어 주세요");return;}
+      if(!t.arrive||toMin(t.arrive)<=toMin(t.start)){toast("도착 시간을 확인해 주세요");return;}
+      const isNew=!S.trips.some(x=>x.id===t.id);
+      const cf=conflicts(t);
+      t._msg = isNew ? "예약 등록" : "일정 변경";
+      if(cf.length) t._msg += " (시간 겹침 확인)";
+      S.sheet=null; renderSheet();
+      if(await saveTrip(t)){ S.day=t.date; render(); toast(isNew?"예약을 등록했어요":"변경을 저장했어요"); }
+      break; }
+    case "advance": {
+      const t0=S.trips.find(x=>x.id===v); if(!t0)return; const nx=NEXT[t0.status]; if(!nx)return;
+      const t=JSON.parse(JSON.stringify(t0)); t.status=nx.to; t._msg=nx.label;
+      const now=new Date().toISOString();
+      if(nx.to==="출발"){ t.departAt=now; const tr=toMin(t.arrive)-toMin(t.start); const s=nowMin(); if(t.date===ymd(new Date())&&Math.abs(s-toMin(t.start))>5){ t.start=fromMin(s); t.arrive=fromMin(s+tr); t._msg+=` · 도착 예정 ${t.arrive}로 조정`; } }
+      if(nx.to==="도착"){ t.arriveAt=now; }
+      if(nx.to==="복귀중"){ t.leaveAt=now; }
+      if(nx.to==="완료"){ t.returnAt=now; }
+      if(await saveTrip(t)) toast(`${nx.label} 처리했어요`);
+      break; }
+    case "delay": { const t0=S.trips.find(x=>x.id===v); if(!t0)return; const t=JSON.parse(JSON.stringify(t0)); t.arrive=fromMin(toMin(t.arrive)+Number(el.dataset.m)); t._msg=`도착 예정 ${t.arrive}로 변경`; if(await saveTrip(t)) toast(`도착 예정 ${t.arrive}`); break; }
+    case "restore": { const t0=S.trips.find(x=>x.id===v); if(!t0)return; const t=JSON.parse(JSON.stringify(t0)); t.status="예약"; t._msg="예약으로 복원"; await saveTrip(t); break; }
+    case "install": if(deferredPrompt){ deferredPrompt.prompt(); try{ const c=await deferredPrompt.userChoice; if(c.outcome==="accepted") toast("앱을 설치했어요"); }catch(_){} deferredPrompt=null; render(); } break;
+    case "saveapi": { const u=document.getElementById("cfg-api").value.trim(); if(u && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){ toast("…/exec 로 끝나는 구글 웹앱 주소를 넣어 주세요"); return; } ls.set("amb.api",u); location.reload(); break; }
+    case "savecfg": { const g=id=>document.getElementById(id).value; saveCfg({crew1:g("cfg-crew1").trim()||"응급구조사 1",crew2:g("cfg-crew2").trim()||"응급구조사 2",open:g("cfg-open"),close:g("cfg-close"),buffer:Number(g("cfg-buffer")),wards:g("cfg-wards").split(",").map(x=>x.trim()).filter(Boolean).join(",")}); break; }
+  }
+});
+document.addEventListener("change", e=>{ if(S.sheet && e.target.closest(".sheet") && ["f-date","f-start","f-arrive"].includes(e.target.id)){ readSheet(); renderSheet(); } });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"&&S.sheet){S.sheet=null;S.confirmId=null;renderSheet();} });
+document.getElementById("fab").addEventListener("click", ()=>{ S.tab="today"; render(); S.sheet=blankTrip(); S.confirmId=null; renderSheet(); });
+
+async function loadMonth(){
+  if(S.mode==="local")return;
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-75);
+  if(`${S.month}-31`>=ymd(cutoff)) { S.monthExtra=null; return; }
+  try{ const trips=await call("getMonth", S.month); S.monthExtra={month:S.month,trips}; render(); }catch(e){}
+}
+
+let toastT=null;
+function toast(msg){
+  const r=document.getElementById("toastRoot");
+  r.innerHTML=`<div class="toast" role="status">${esc(msg)}</div>`;
+  clearTimeout(toastT); toastT=setTimeout(()=>{r.innerHTML=""},3200);
+}
+setInterval(()=>{ if(!S.sheet && S.tab==="today") render(); }, 60000);
+
+let deferredPrompt=null;
+function standalone(){ return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
+window.addEventListener("beforeinstallprompt", e=>{ e.preventDefault(); deferredPrompt=e; if(S.tab==="settings"&&!S.sheet) render(); });
+window.addEventListener("appinstalled", ()=>{ deferredPrompt=null; toast("앱을 설치했어요"); });
+if("serviceWorker" in navigator){ window.addEventListener("load", ()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); }); }
+
+boot();
+})();
+</script>
+
+</body></html>
